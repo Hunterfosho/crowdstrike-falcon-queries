@@ -4,7 +4,7 @@
 
 A collection of Splunk's Search Processing Language (SPL) for Threat Hunting with CrowdStrike Falcon
 
-Developed and maintained by [HunterFoSho](https://github.com/Hunterfosho/crowdstrike-falcon-queries/) Crowdstrike Falcon Hunter
+Developed and maintained by pe3zx(https://github.com/pe3zx/crowdstrike-falcon-queries) Master Repo
 
 - [crowdstrike-falcon-queries](#crowdstrike-falcon-queries)
   - [Execution of Renamed Executables](#execution-of-renamed-executables)
