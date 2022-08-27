@@ -119,7 +119,7 @@ event_simpleName="RegSystemConfigValueUpdate" AND RegObjectName="*\RDP-Tcp" AND 
 
 ## Basic UserLogon and ComputerName
 
-Enter a username between the ()
+>Enter a username between the ()
 
 ```
 UserName=() event_simpleName=UserLogon
@@ -128,8 +128,6 @@ UserName=() event_simpleName=UserLogon
 ```
 
 ## Detecting USB Devices
-
-
 
 ```
 event_simpleName=DcUsbDeviceConnected DevicePropertyDeviceDescription="USB Mass Storage Device"
@@ -149,6 +147,7 @@ ComputerName=*  event_simpleName=ProcessRollup2 (FileName=net.exe OR FileName=ip
 ComputerName=* event_simpleName=ProcessRollup2 FileName IN (net.exe,ipconfig.exe,whoami.exe,quser.exe,ping.exe,netstat.exe,tasklist.exe,Hostname.exe,at.exe) 
 | table ComputerName UserName FileName CommandLine
 ```
+
 ## Detecting CMD.exe commandLine activity NOT running from temp directories
 
 >This query detects commandline cmd.exe activity by clustering the files triggered
@@ -205,8 +204,8 @@ event_simpleName IN (ProcessRollup2) ComputerName=()
 | rename ProcessStartTime_decimal as endpointSystemClockUTC, _time as cloudTimeUTC
 | convert ctime(cloudTimeUTC), ctime(endpointSystemClockUTC), ctime(myLocalTime)
 ```
-## Micrsoft Office Macro Hunting Queries
 
+## Micrsoft Office Macro Hunting Queries
 
 >Microsoft Excel, Word and Powerpoint Macro SearchThis query will return the following information: ComputerName FileName ParentCommandLine ParentImageFileName FilePath ScriptingLanguageId ScriptContent. This query will also output the macro itself and language of the macro**
 
@@ -215,7 +214,6 @@ event_simpleName=ScriptControlScanTelemetry (FileName="EXCEL.EXE" OR FileName="W
 ```
 
 >Microsoft Excel, Word and Powerpoint Macro Enabled File SavedThis query will return the following information: ComputerName UserName FileName FilePath of any MS Office file with the following extensions: *.xlsm OR *.xlam OR *.xlsb OR *.xltm OR *.xlw OR *.docm OR *.dotm OR *.pptm OR *.potm OR *.ppam OR *.ppsm OR *.ppsx**
-
 
 ```
 event_simpleName=OoxmlFileWritten (FileName=*.xla OR FileName*.xlm OR FileName=*.xltm OR FileName=*.xlsm OR FileName=*.xlam OR FileName=*.xlsb OR FileName=*.xltm OR FileName=*.xlw OR FileName=*.docm OR FileName=*.dotm OR FileName=*.pptm OR FileName=*.potm OR FileName=*.ppam OR FileName=*.ppsm OR FileName=*.ppsx OR FileName=*.sldm OR FileName=*.ACCDE) | eval CloudTime=strftime(timestamp/1000, "%Y-%m-%d %H:%M:%S") | table CloudTime ComputerName UserName FileName FilePath
