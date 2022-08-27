@@ -18,6 +18,7 @@ Developed and maintained by [HunterfoSho](https://github.com/Hunterfosho/crowdst
   - [Threat Hunting #5 - Detecting CMD.exe CommandLine NOT running from temp directories](#threat-hunting-5---detecting-CMD.exe-commandline-NOT-running-from-temp-directories)
   - [Threat Hunting #6 - Detecting Files Written to USB Device](#threat-hunting-6---detecting-files-written-to-usb)
   - [Threat Hunting #7 - Detecting EOL WIN10 Devices](#threat-hunting-7---detecting-eol-win10-devices)
+  - [Threat Hunting #8 - Detecting DNS Requests by DomainName](#threat-hunting-8---detecting-dns-requests-by-domainname)
 
 ## Execution of Renamed Executables
 
@@ -134,10 +135,10 @@ event_simpleName=DcUsbDeviceConnected DevicePropertyDeviceDescription="USB Mass 
 ```
 ## Threat Hunting #4 - Detecting Known Commands by ComputerName
 
+This can be performed with either of the commands below
+
 ```
 ComputerName=*  event_simpleName=ProcessRollup2 (FileName=net.exe OR FileName=ipconfig.exe OR FileName=whoami.exe OR FileName=quser.exe OR FileName=ping.exe OR FileName=netstat.exe OR FileName=tasklist.exe OR FileName=Hostname.exe OR FileName=at.exe) | table ComputerName UserName FileName CommandLine
-
-    or 
 
 ComputerName=* event_simpleName=ProcessRollup2 FileName IN (net.exe,ipconfig.exe,whoami.exe,quser.exe,ping.exe,netstat.exe,tasklist.exe,Hostname.exe,at.exe) 
 | table ComputerName UserName FileName CommandLine
@@ -173,3 +174,12 @@ earliest=-7d event_simpleName=OsVersionInfo MajorVersion_decimal=10 MinorVersion
 | stats count by WindowsBuild ComputerName
 | sort - count
 ```
+
+## Detecting DNS Request by DomainName
+
+I am using github as the example, but you can enter any domain name in the ()
+
+```
+event_simpleName=DnsRequest DomainName IN (raw.githubusercontent.com)
+| table ComputerName DomainName ContextTimeStamp_decimal 
+| eval ContextTimeStamp_readable=strftime(ContextTimeStamp_decimal, "%Y-%m-%d %H:%M:%S.%3f")
