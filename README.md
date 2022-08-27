@@ -4,17 +4,20 @@
 
 A collection of Splunk's Search Processing Language (SPL) for Threat Hunting with CrowdStrike Falcon
 
-Developed and maintained by pe3zx(https://github.com/pe3zx/crowdstrike-falcon-queries) Master Repo
+Developed and maintained by [HunterfoSho](https://github.com/Hunterfosho/crowdstrike-falcon-queries) forked from [pe3zx](https://github.com/pe3zx/crowdstrike-falcon-queries) Master Repo
 
 - [crowdstrike-falcon-queries](#crowdstrike-falcon-queries)
   - [Execution of Renamed Executables](#execution-of-renamed-executables)
   - [List of Living Off The Land Binaries with Network Connections](#list-of-living-off-the-land-binaries-with-network-connections)
   - [Suspicious Network Connections from Processes](#suspicious-network-connections-from-processes)
   - [Suspicious PowerShell Process, Spawned from Explorer, with Network Connections](#suspicious-powershell-process-spawned-from-explorer-with-network-connections)
-  - [Threat Hunting #1 - RDP Hijacking traces - Part 1](#threat-hunting-1---rdp-hijacking-traces---part-1)
-  - [Threat Hunting #2 - Detecting PsLoggedOn exec using EID 5145](#threat-hunting-2---detecting-psloggedon-exec-using-eid-5145)
+  - [Threat Hunting #1 - RDP Hijacking traces](#threat-hunting-1---rdp-hijacking-traces)
+  - [Threat Hunting #2 - Basic UserLogon and ComputerName](#threat-hunting-2---basic-userlogon-and-computername)
   - [Threat Hunting #3 - Detecting USB device](#threat-hunting-3---detecting-USB-device)
   - [Threat Hunting #4 - Detecting Known Commands by ComputerName ](#threat-hunting-4---detecting-known-commands)
+  - [Threat Hunting #5 - Detecting CMD.exe CommandLine NOT running from temp directories](#threat-hunting-5---detecting-CMD.exe-commandline-NOT-running-from-temp-directories)
+  - [Threat Hunting #6 - Detecting Files Written to USB Device](#threat-hunting-6---detecting-files-written-to-usb)
+  - [Threat Hunting #7 - Detecting EOL WIN10 Devices](#threat-hunting-7---detecting-eol-win10-devices)
 
 ## Execution of Renamed Executables
 
@@ -97,7 +100,7 @@ event_simpleName="DnsRequest"
 | table ComputerName timestamp ImageFileName DomainName CommandLine
 ```
 
-## Threat Hunting #1 - RDP Hijacking traces - Part 1
+## Threat Hunting #1 - RDP Hijacking traces
 
 This query is inspired by [MENASEC's research](https://blog.menasec.net/2019/02/of-rdp-hijacking-part1-remote-desktop.html).
 
@@ -109,15 +112,19 @@ event_simpleName="RegSystemConfigValueUpdate" AND RegObjectName="*\RDP-Tcp" AND 
 | table timestamp, ComputerName, NewRDPPort
 ```
 
-## Threat Hunting #2 - Detecting PsLoggedOn exec using EID 5145
+## Threat Hunting #2 - Basic UserLogon and ComputerName
 
-This query is inspired by [MENASEC's research](https://blog.menasec.net/2019/02/threat-hunting-detecting-psloggedon.html)
+Enter a username between the ()
 
-*No events related to this activity*
+```
+UserName=() event_simpleName=UserLogon
+| table ComputerName 
+| dedup ComputerName
+```
 
 ## Threat Hunting #3 - Detecting USB Devices
 
-This query is inspired by [Crowdstrike's Falcon OverWatch Team](https://www.reddit.com/crowdstrike)
+
 
 ```
 event_simpleName=DcUsbDeviceConnected DevicePropertyDeviceDescription="USB Mass Storage Device"
@@ -134,4 +141,35 @@ ComputerName=*  event_simpleName=ProcessRollup2 (FileName=net.exe OR FileName=ip
 
 ComputerName=* event_simpleName=ProcessRollup2 FileName IN (net.exe,ipconfig.exe,whoami.exe,quser.exe,ping.exe,netstat.exe,tasklist.exe,Hostname.exe,at.exe) 
 | table ComputerName UserName FileName CommandLine
+```
+## Threat Hunting #5 - Detecting CMD.exe commandLine activity NOT running from temp directories
+
+This query detects commandline cmd.exe activity by clustering the files triggered
+
+```
+FileName=cmd.exe event_simpleName=ProcessRollup2 CommandLine!="*Windows\\TEMP\\xtmp\\tmp*" CommandLine!="*AppData\\Local\\Temp\\cstmp*"
+| cluster field=CommandLine labelonly=true t=0.9
+| stats values(ComputerName) values(CommandLine) by cluster_label
+```
+
+## Detecting Files Written to USB Device
+
+```
+event_simpleName=* FileWritten IsOnRemovableDisk_decimal=1
+| rename DiskParentDeviceInstanceId AS DeviceInstanceId
+| join aid DeviceInstanceId [search event_simpleName=DcUsbDeviceConnected]
+| rename ComputerName AS Hostname, DevicePropertyClassName AS "Connection Type", DeviceManufacturer AS Manufacturer, DeviceProduct AS "Product Name", DevicePropertyDeviceDescription AS Description, DeviceInstanceId AS "Device ID"
+| stats list(FileName) as "File Name", values(UserName) as User by Hostname "Connection Type" Manufacturer "Product Name" Description "Device ID"
+```
+
+## Detecting EOL WIN10 Devices
+
+```
+earliest=-7d event_simpleName=OsVersionInfo MajorVersion_decimal=10 MinorVersion_decimal=0 ProductType_decimal=1
+| dedup aid
+| rename BuildNumber_decimal as "WindowsBuildVersion"
+| eval WindowsBuild=case(WindowsBuildVersion == 17134, "Windows 10 (v1803)", WindowsBuildVersion == 18363, "Windows 10 (v1909)", WindowsBuildVersion == 18362, "Windows 10 (v1903)", WindowsBuildVersion == 16299, "Windows 10 (v1709)", WindowsBuildVersion == 15063, "Windows 10 (v1703)", WindowsBuildVersion == 10586, "Windows 10 (v1511)", WindowsBuildVersion == 19041, "Windows 10 (v2004)")
+| table ComputerName aid ProductName WindowsBuild AgentVersion
+| stats count by WindowsBuild ComputerName
+| sort - count
 ```
