@@ -23,6 +23,7 @@ Developed and maintained by [HunterfoSho](https://github.com/Hunterfosho/crowdst
   - [Detecting EOL WIN10 Devices](#detecting-eol-win10-devices)
   - [Detecting DNS Request by DomainName](#detecting-dns-request-by-domainname)
   - [Adjust Timebased Searches OffsetUTC by Local Time](#adjust-timebased-searches-offsetutc-by-local-time)
+  - [Micrsoft Office Macro Hunting Queries](#micrsoft-office-macro-hunting-queries)
 
 ## Execution of Renamed Executables
 
@@ -203,5 +204,13 @@ event_simpleName IN (ProcessRollup2) ComputerName=()
 | rename ProcessStartTime_decimal as endpointSystemClockUTC, _time as cloudTimeUTC
 | convert ctime(cloudTimeUTC), ctime(endpointSystemClockUTC), ctime(myLocalTime)
 ```
+## Micrsoft Office Macro Hunting Queries
+
+```
+event_simpleName=ScriptControlScanTelemetry (FileName="EXCEL.EXE" OR FileName="WINWORD.EXE" OR FileName="POWERPNT.EXE") ScriptContent="*" | eval CloudTime=strftime(timestamp/1000, "%Y-%m-%d %H:%M:%S") | eval ScriptingLanguageId=case(ScriptingLanguageId_decimal="1", "UNKNOWN", ScriptingLanguageId_decimal="2", "POWERSHELL", ScriptingLanguageId_decimal="3", "VBA", ScriptingLanguageId_decimal="4", "VBS", ScriptingLanguageId_decimal="5", "JSCRIPT", ScriptingLanguageId_decimal="6", "DOTNET", ScriptingLanguageId_decimal="7", "EXCEL") | table CloudTime ComputerName ParentCommandLine FileName ScriptContentName ScriptingLanguageId ScriptContent
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+event_simpleName=OoxmlFileWritten (FileName=*.xla OR FileName*.xlm OR FileName=*.xltm OR FileName=*.xlsm OR FileName=*.xlam OR FileName=*.xlsb OR FileName=*.xltm OR FileName=*.xlw OR FileName=*.docm OR FileName=*.dotm OR FileName=*.pptm OR FileName=*.potm OR FileName=*.ppam OR FileName=*.ppsm OR FileName=*.ppsx OR FileName=*.sldm OR FileName=*.ACCDE) | eval CloudTime=strftime(timestamp/1000, "%Y-%m-%d %H:%M:%S") | table CloudTime ComputerName UserName FileName FilePath
+```
+
 
 
