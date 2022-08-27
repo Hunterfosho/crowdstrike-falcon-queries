@@ -1,10 +1,10 @@
 # crowdstrike-falcon-queries
 
-<img src="https://img.shields.io/github/last-commit/pe3zx/crowdstrike-falcon-queries.svg"/> </p>
+
 
 A collection of Splunk's Search Processing Language (SPL) for Threat Hunting with CrowdStrike Falcon
 
-Developed and maintained by [Intelligent Response](https://www.i-secure.co.th/author/intelligentresponse/) team, i-secure co., Ltd.
+Developed and maintained by [HunterFoSho](https://github.com/Hunterfosho/crowdstrike-falcon-queries/) Crowdstrike Falcon Hunter
 
 - [crowdstrike-falcon-queries](#crowdstrike-falcon-queries)
   - [Execution of Renamed Executables](#execution-of-renamed-executables)
@@ -13,7 +13,8 @@ Developed and maintained by [Intelligent Response](https://www.i-secure.co.th/au
   - [Suspicious PowerShell Process, Spawned from Explorer, with Network Connections](#suspicious-powershell-process-spawned-from-explorer-with-network-connections)
   - [Threat Hunting #1 - RDP Hijacking traces - Part 1](#threat-hunting-1---rdp-hijacking-traces---part-1)
   - [Threat Hunting #2 - Detecting PsLoggedOn exec using EID 5145](#threat-hunting-2---detecting-psloggedon-exec-using-eid-5145)
-  - [Threat Hunting #3 - Detecting USB device](#Threat-hunting-3---detecting-USB-device)
+  - [Threat Hunting #3 - Detecting USB device](#threat-hunting-3---detecting-USB-device)
+  - [Threat Hunting #4 - Detecting Known Commands by ComputerName ](#threat-hunting-4---detecting-known-commands)
 
 ## Execution of Renamed Executables
 
@@ -123,4 +124,14 @@ event_simpleName=DcUsbDeviceConnected DevicePropertyDeviceDescription="USB Mass 
 | eval CloudTime=strftime(timestamp/1000, "%Y-%m-%d %H:%M:%S.%3f")
 | rename ComputerName AS Hostname, DevicePropertyClassName AS "Connection Type", DeviceManufacturer AS Manufacturer, DeviceProduct AS "Product Name", DevicePropertyDeviceDescription AS Description, DevicePropertyClassGuid_readable AS GUID, DeviceInstanceId AS "Device ID"
 | stats list(CloudTime) by Hostname "Connection Type" Manufacturer "Product Name" Description GUID "Device ID"
+```
+## Threat Hunting #4 - Detecting Known Commands by ComputerName
+
+```
+ComputerName=*  event_simpleName=ProcessRollup2 (FileName=net.exe OR FileName=ipconfig.exe OR FileName=whoami.exe OR FileName=quser.exe OR FileName=ping.exe OR FileName=netstat.exe OR FileName=tasklist.exe OR FileName=Hostname.exe OR FileName=at.exe) | table ComputerName UserName FileName CommandLine
+
+    or 
+
+ComputerName=* event_simpleName=ProcessRollup2 FileName IN (net.exe,ipconfig.exe,whoami.exe,quser.exe,ping.exe,netstat.exe,tasklist.exe,Hostname.exe,at.exe) 
+| table ComputerName UserName FileName CommandLine
 ```
