@@ -1,6 +1,6 @@
 # crowdstrike-falcon-queries
 
-
+<img src="https://img.shields.io/github/last-commit/hunterfosho/crowdstrike-falcon-queries.svg"/> </p>
 
 **A collection of Splunk's Search Processing Language (SPL) for Threat Hunting with CrowdStrike Falcon**
 
