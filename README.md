@@ -6,19 +6,23 @@ A collection of Splunk's Search Processing Language (SPL) for Threat Hunting wit
 
 Developed and maintained by [HunterfoSho](https://github.com/Hunterfosho/crowdstrike-falcon-queries) forked from [pe3zx](https://github.com/pe3zx/crowdstrike-falcon-queries) Master Repo
 
+## Additional credit and huge shoutout to the cs engneering team at [r/crowdstrike](https://www.reddit.com/r/crowdstrike/?f=flair_name%3A%22CQF%22)
+
 - [crowdstrike-falcon-queries](#crowdstrike-falcon-queries)
+  - [Additional credit and huge shoutout to the cs engneering team at r/crowdstrike](#additional-credit-and-huge-shoutout-to-the-cs-engneering-team-at-rcrowdstrike)
   - [Execution of Renamed Executables](#execution-of-renamed-executables)
   - [List of Living Off The Land Binaries with Network Connections](#list-of-living-off-the-land-binaries-with-network-connections)
   - [Suspicious Network Connections from Processes](#suspicious-network-connections-from-processes)
   - [Suspicious PowerShell Process, Spawned from Explorer, with Network Connections](#suspicious-powershell-process-spawned-from-explorer-with-network-connections)
-  - [Threat Hunting #1 - RDP Hijacking traces](#threat-hunting-1---rdp-hijacking-traces)
-  - [Threat Hunting #2 - Basic UserLogon and ComputerName](#threat-hunting-2---basic-userlogon-and-computername)
-  - [Threat Hunting #3 - Detecting USB device](#threat-hunting-3---detecting-USB-device)
-  - [Threat Hunting #4 - Detecting Known Commands by ComputerName ](#threat-hunting-4---detecting-known-commands)
-  - [Threat Hunting #5 - Detecting CMD.exe CommandLine NOT running from temp directories](#threat-hunting-5---detecting-CMD.exe-commandline-NOT-running-from-temp-directories)
-  - [Threat Hunting #6 - Detecting Files Written to USB Device](#threat-hunting-6---detecting-files-written-to-usb)
-  - [Threat Hunting #7 - Detecting EOL WIN10 Devices](#threat-hunting-7---detecting-eol-win10-devices)
-  - [Threat Hunting #8 - Detecting DNS Requests by DomainName](#threat-hunting-8---detecting-dns-requests-by-domainname)
+  - [RDP Hijacking traces](#rdp-hijacking-traces)
+  - [Basic UserLogon and ComputerName](#basic-userlogon-and-computername)
+  - [Detecting USB Devices](#detecting-usb-devices)
+  - [Detecting Known Commands by ComputerName](#detecting-known-commands-by-computername)
+  - [Detecting CMD.exe commandLine activity NOT running from temp directories](#detecting-cmdexe-commandline-activity-not-running-from-temp-directories)
+  - [Detecting Files Written to USB Device](#detecting-files-written-to-usb-device)
+  - [Detecting EOL WIN10 Devices](#detecting-eol-win10-devices)
+  - [Detecting DNS Request by DomainName](#detecting-dns-request-by-domainname)
+  - [Adjust Timebased Searches OffsetUTC by Local Time](#adjust-timebased-searches-offsetutc-by-local-time)
 
 ## Execution of Renamed Executables
 
@@ -101,7 +105,7 @@ event_simpleName="DnsRequest"
 | table ComputerName timestamp ImageFileName DomainName CommandLine
 ```
 
-## Threat Hunting #1 - RDP Hijacking traces
+## RDP Hijacking traces
 
 This query is inspired by [MENASEC's research](https://blog.menasec.net/2019/02/of-rdp-hijacking-part1-remote-desktop.html).
 
@@ -113,7 +117,7 @@ event_simpleName="RegSystemConfigValueUpdate" AND RegObjectName="*\RDP-Tcp" AND 
 | table timestamp, ComputerName, NewRDPPort
 ```
 
-## Threat Hunting #2 - Basic UserLogon and ComputerName
+## Basic UserLogon and ComputerName
 
 Enter a username between the ()
 
@@ -123,7 +127,7 @@ UserName=() event_simpleName=UserLogon
 | dedup ComputerName
 ```
 
-## Threat Hunting #3 - Detecting USB Devices
+## Detecting USB Devices
 
 
 
@@ -133,17 +137,17 @@ event_simpleName=DcUsbDeviceConnected DevicePropertyDeviceDescription="USB Mass 
 | rename ComputerName AS Hostname, DevicePropertyClassName AS "Connection Type", DeviceManufacturer AS Manufacturer, DeviceProduct AS "Product Name", DevicePropertyDeviceDescription AS Description, DevicePropertyClassGuid_readable AS GUID, DeviceInstanceId AS "Device ID"
 | stats list(CloudTime) by Hostname "Connection Type" Manufacturer "Product Name" Description GUID "Device ID"
 ```
-## Threat Hunting #4 - Detecting Known Commands by ComputerName
+## Detecting Known Commands by ComputerName
 
-This can be performed with either of the commands below
+This can be performed with either of the commands below.
 
 ```
 ComputerName=*  event_simpleName=ProcessRollup2 (FileName=net.exe OR FileName=ipconfig.exe OR FileName=whoami.exe OR FileName=quser.exe OR FileName=ping.exe OR FileName=netstat.exe OR FileName=tasklist.exe OR FileName=Hostname.exe OR FileName=at.exe) | table ComputerName UserName FileName CommandLine
-
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 ComputerName=* event_simpleName=ProcessRollup2 FileName IN (net.exe,ipconfig.exe,whoami.exe,quser.exe,ping.exe,netstat.exe,tasklist.exe,Hostname.exe,at.exe) 
 | table ComputerName UserName FileName CommandLine
 ```
-## Threat Hunting #5 - Detecting CMD.exe commandLine activity NOT running from temp directories
+## Detecting CMD.exe commandLine activity NOT running from temp directories
 
 This query detects commandline cmd.exe activity by clustering the files triggered
 
@@ -177,9 +181,27 @@ earliest=-7d event_simpleName=OsVersionInfo MajorVersion_decimal=10 MinorVersion
 
 ## Detecting DNS Request by DomainName
 
-I am using github as the example, but you can enter any domain name in the ()
+I am using github as the example, but you can enter any domain name in the ().
 
 ```
 event_simpleName=DnsRequest DomainName IN (raw.githubusercontent.com)
 | table ComputerName DomainName ContextTimeStamp_decimal 
 | eval ContextTimeStamp_readable=strftime(ContextTimeStamp_decimal, "%Y-%m-%d %H:%M:%S.%3f")
+```
+
+## Adjust Timebased Searches OffsetUTC by Local Time
+
+Falcon outputs time in UTC, you can enter your UTCoffset in side the () below.
+
+In the USA you can find out more about UTC and your specific offset [here](https://www.countries-ofthe-world.com/time-zones-usa.html).
+
+```
+event_simpleName IN (ProcessRollup2) ComputerName=()
+| eval myUTCoffset=()
+| eval myLocalTime=ProcessStartTime_decimal+(myUTCoffset*60*60)
+| table FileName _time ProcessStartTime_decimal myLocalTime
+| rename ProcessStartTime_decimal as endpointSystemClockUTC, _time as cloudTimeUTC
+| convert ctime(cloudTimeUTC), ctime(endpointSystemClockUTC), ctime(myLocalTime)
+```
+
+
