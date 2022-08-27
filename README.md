@@ -13,6 +13,7 @@ Developed and maintained by [Intelligent Response](https://www.i-secure.co.th/au
   - [Suspicious PowerShell Process, Spawned from Explorer, with Network Connections](#suspicious-powershell-process-spawned-from-explorer-with-network-connections)
   - [Threat Hunting #1 - RDP Hijacking traces - Part 1](#threat-hunting-1---rdp-hijacking-traces---part-1)
   - [Threat Hunting #2 - Detecting PsLoggedOn exec using EID 5145](#threat-hunting-2---detecting-psloggedon-exec-using-eid-5145)
+  - [Threat Hunting #3 - Detecting USB device](#Threat-hunting-3---detecting-USB-device)
 
 ## Execution of Renamed Executables
 
@@ -112,3 +113,14 @@ event_simpleName="RegSystemConfigValueUpdate" AND RegObjectName="*\RDP-Tcp" AND 
 This query is inspired by [MENASEC's research](https://blog.menasec.net/2019/02/threat-hunting-detecting-psloggedon.html)
 
 *No events related to this activity*
+
+## Threat Hunting #3 - Detecting USB Devices
+
+This query is inspired by [Crowdstrike's Falcon OverWatch Team](https://www.reddit.com/crowdstrike)
+
+```
+event_simpleName=DcUsbDeviceConnected DevicePropertyDeviceDescription="USB Mass Storage Device"
+| eval CloudTime=strftime(timestamp/1000, "%Y-%m-%d %H:%M:%S.%3f")
+| rename ComputerName AS Hostname, DevicePropertyClassName AS "Connection Type", DeviceManufacturer AS Manufacturer, DeviceProduct AS "Product Name", DevicePropertyDeviceDescription AS Description, DevicePropertyClassGuid_readable AS GUID, DeviceInstanceId AS "Device ID"
+| stats list(CloudTime) by Hostname "Connection Type" Manufacturer "Product Name" Description GUID "Device ID"
+```
