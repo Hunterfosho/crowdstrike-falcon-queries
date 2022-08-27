@@ -23,6 +23,7 @@
   - [Detecting DNS Request by DomainName](#detecting-dns-request-by-domainname)
   - [Adjust Timebased Searches OffsetUTC by Local Time](#adjust-timebased-searches-offsetutc-by-local-time)
   - [Micrsoft Office Macro Hunting Queries](#micrsoft-office-macro-hunting-queries)
+  - [Detecting Remote Network Connections by ComputerName](#detecting-remote-network-connections-by-computername)
 
 ## Execution of Renamed Executables
 
@@ -219,5 +220,19 @@ event_simpleName=ScriptControlScanTelemetry (FileName="EXCEL.EXE" OR FileName="W
 event_simpleName=OoxmlFileWritten (FileName=*.xla OR FileName*.xlm OR FileName=*.xltm OR FileName=*.xlsm OR FileName=*.xlam OR FileName=*.xlsb OR FileName=*.xltm OR FileName=*.xlw OR FileName=*.docm OR FileName=*.dotm OR FileName=*.pptm OR FileName=*.potm OR FileName=*.ppam OR FileName=*.ppsm OR FileName=*.ppsx OR FileName=*.sldm OR FileName=*.ACCDE) | eval CloudTime=strftime(timestamp/1000, "%Y-%m-%d %H:%M:%S") | table CloudTime ComputerName UserName FileName FilePath
 ```
 
+## Detecting Remote Network Connections by ComputerName
 
+>This search will allow you to see remote network connections by computer name. Please enter the computer name inside the () below.
+
+```
+index=main event_simpleName=NetworkConnectIP4 cid=* ComputerName=()
+          | search LocalAddressIP4 IN (*) AND aip IN (*) AND RemoteAddressIP4 IN (*)
+          | stats values(ComputerName) AS "Host Name", count AS Count, dc(ComputerName) AS "# of Hosts", last(ComputerName) AS "First Connection", min(_time) AS "First Connect Date", latest(ComputerName) AS "Last Connection", max(_time) AS "Last Connect Date", values(LocalAddressIP4) AS "Source IP", values(aip) AS "External IP" by RemoteAddressIP4  
+          | where Count <= 1
+          | dedup RemoteAddressIP4
+          | convert ctime("First Connect Date")
+          | convert ctime("Last Connect Date")
+          | table "Source IP", RemoteAddressIP4, "External IP", "Host Name", "# of Hosts", "First Connection", "First Connect Date", "Last Connection", "Last Connect Date"
+          | rename RemoteAddressIP4 AS "Destination IP"
+```
 
