@@ -35,6 +35,9 @@
   - [The same username against a single or multiple systems the point of interest](#the-same-username-against-a-single-or-multiple-systems-the-point-of-interest)
   - [Successful Audit Login](#successful-audit-login)
   - [Hunting Linux RFM](#hunting-linux-rfm)
+  - [Discover RFM State](#discover-rfm-state)
+  - [UserPassword Greater than 90days by UserLogon](#userpassword-greater-than-90days-by-userlogon)
+  - [Hunting Known Commands](#hunting-known-commands)
 
 ## Execution of Renamed Executables
 
@@ -388,4 +391,44 @@ true(),"-")
 | table aid, ComputerName, falconVersion, osVersion, kernelVersion, sensorState, osVersion, FirstSeen, LastSeen
 | convert ctime(FirstSeen) ctime(LastSeen)
 | sort + ComputerName
+```
+
+## Discover RFM State
+
+```
+event_simpleName=OsVersionInfo event_platform=*
+| stats latest(timestamp) AS lastTimestamp, latest(aip) as lastExtIP, latest(RFMState_decimal) as RFMState by aid
+| where RFMState=1
+| eval lastTimestamp=lastTimestamp/1000
+| convert ctime(lastTimestamp)
+| lookup aid_master aid OUTPUT Version, ComputerName as Hostname, MachineDomain, OU, SiteName
+```
+
+## UserPassword Greater than 90days by UserLogon
+
+```
+event_simpleName=UserLogon
+| where isnotnull(PasswordLastSet_decimal)
+| fields, aid, event_platform, ComputerName, LocalAddressIP4, LogonDomain, LogonServer, LogonTime_decimal, LogonType_decimal, PasswordLastSet_decimal, ProductType, UserIsAdmin_decimal, UserName, UserSid_readable
+| eval LogonType=case(LogonType_decimal="2", "Interactive", LogonType_decimal="3", "Network", LogonType_decimal="4", "Batch", LogonType_decimal="5", "Service", LogonType_decimal="6", "Proxy", LogonType_decimal="7", "Unlock", LogonType_decimal="8", "Network Cleartext", LogonType_decimal="9", "New Credentials", LogonType_decimal="10", "RDP", LogonType_decimal="11", "Cached Credentials", LogonType_decimal="12", "Auditing", LogonType_decimal="13", "Unlock Workstation")
+| eval Product=case(ProductType = "1","Workstation", ProductType = "2","Domain Controller", ProductType = "3","Server") 
+| eval UserIsAdmin=case(UserIsAdmin_decimal = "1","Admin", UserIsAdmin_decimal = "0","Standard")
+| eval passwordAge=now()-PasswordLastSet_decimal
+| eval passwordAge=round(passwordAge/60/60/24,0)
+| stats values(event_platform) as Platform latest(passwordAge) as passwordAge values(UserIsAdmin) as adminStatus by UserName, UserSid_readable
+| sort - passwordAge
+| where passwordAge > 90
+```
+
+## Hunting Known Commands 
+
+```
+event_platform=win event_simpleName=ProcessRollup2 FileName IN (whoami.exe, arp.exe, cmd.exe, net.exe, net1.exe, ipconfig.exe, route.exe, netstat.exe, nslookup.exe) AND NOT ParentBaseFileName IN (cmd.exe)
+| stats dc(FileName) as fnameCount, earliest(ProcessStartTime_decimal) as firstRun, latest(ProcessStartTime_decimal) as lastRun, values(FileName) as filesRun, values(CommandLine) as cmdsRun by cid, aid, ComputerName, ParentBaseFileName, ParentProcessId_decimal
+| where fnameCount > 2
+| eval timeDelta=lastRun-firstRun
+| where timeDelta < 600
+| eval graphExplorer=case(ParentProcessId_decimal!="","https://falcon.crowdstrike.com/graphs/process-explorer/tree?id=pid:".aid.":".ParentProcessId_decimal)
+| lookup cid_name cid OUTPUT name as Company 
+| table aid, Company, ComputerName, ParentBaseFileName, filesRun, cmdsRun, timeDelta, graphExplorer
 ```
