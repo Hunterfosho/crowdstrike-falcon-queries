@@ -24,6 +24,17 @@
   - [Adjust Timebased Searches OffsetUTC by Local Time](#adjust-timebased-searches-offsetutc-by-local-time)
   - [Micrsoft Office Macro Hunting Queries](#micrsoft-office-macro-hunting-queries)
   - [Detecting Remote Network Connections by ComputerName](#detecting-remote-network-connections-by-computername)
+  - [Hunting USB and Removeable Device](#hunting-usb-and-removeable-device)
+  - [Get A Quick Count of Endpoints by CID](#get-a-quick-count-of-endpoints-by-cid)
+  - [Hunting for Falcon Sensor Removal](#hunting-for-falcon-sensor-removal)
+  - [MAC Devices](#mac-devices)
+  - [Hunting UserLogon Events](#hunting-userlogon-events)
+    - [Hunting Linux](#hunting-linux)
+  - [The same remote IP address having more than one failed login attempt](#the-same-remote-ip-address-having-more-than-one-failed-login-attempt)
+  - [The same remote IP address having more than one failed login attempt against the same username](#the-same-remote-ip-address-having-more-than-one-failed-login-attempt-against-the-same-username)
+  - [The same username against a single or multiple systems the point of interest](#the-same-username-against-a-single-or-multiple-systems-the-point-of-interest)
+  - [Successful Audit Login](#successful-audit-login)
+  - [Hunting Linux RFM](#hunting-linux-rfm)
 
 ## Execution of Renamed Executables
 
@@ -235,4 +246,146 @@ index=main event_simpleName=NetworkConnectIP4 cid=* ComputerName=()
           | table "Source IP", RemoteAddressIP4, "External IP", "Host Name", "# of Hosts", "First Connection", "First Connect Date", "Last Connection", "Last Connect Date"
           | rename RemoteAddressIP4 AS "Destination IP"
 ```
+## Hunting USB and Removeable Device
 
+```
+event_simpleName=DcUsbDeviceConnected DevicePropertyDeviceDescription="USB Mass Storage Device"
+| eval CloudTime=strftime(timestamp/1000, "%Y-%m-%d %H:%M:%S.%3f")
+| rename ComputerName AS Hostname, DevicePropertyClassName AS "Connection Type", DeviceManufacturer AS Manufacturer, DeviceProduct AS "Product Name", DevicePropertyDeviceDescription AS Description, DevicePropertyClassGuid_readable AS GUID, DeviceInstanceId AS "Device ID"
+| stats list(CloudTime) by Hostname "Connection Type" Manufacturer "Product Name" Description GUID "Device ID"
+
+index=main AND eventtype=eam AND event_simpleName=*FileWritten AND IsOnRemovableDisk_decimal=1
+| rename event_platform as OperatingSystem, aip as PublicIP 
+| table _time,ComputerName,OperatingSystem,LocalAddressIP4,PublicIP,UserName,IsOnRemovableDisk_decimal,event_simpleName,DiskParentDeviceInstanceId,FilePath,TargetFileName
+
+event_platform=win ComputerName=* event_simpleName=*FileWritten | fields aid, ComputerName, ContextProcessId_decimal, ContextTimeStamp_decimal, TargetFileName, Size_decimal | rename TargetFileName AS writtenFile | rename ContextProcessId_decimal AS TargetProcessId_decimal | join aid, TargetProcessId_decimal [search event_platform=win event_simpleName=ProcessRollup2 | fillnull value="SYSTEM" UserName] | convert ctime(ContextTimeStamp_decimal) AS writeTime | eval fileSize=round(((Size_decimal/1024)/1024), 2) | table writeTime ComputerName UserName FileName writtenFile fileSize | rename writeTime AS "Write Time", ComputerName AS Endpoint, UserName AS User, FileName AS "Responsible Process", writtenFile AS "File Written", fileSize AS "File Size"
+
+event_simpleName=* FileWritten IsOnRemovableDisk_decimal=1
+| rename DiskParentDeviceInstanceId AS DeviceInstanceId
+| join aid DeviceInstanceId [search event_simpleName=DcUsbDeviceConnected]
+| rename ComputerName AS Hostname, DevicePropertyClassName AS "Connection Type", DeviceManufacturer AS Manufacturer, DeviceProduct AS "Product Name", DevicePropertyDeviceDescription AS Description, DeviceInstanceId AS "Device ID"
+| stats list(FileName) as "File Name", values(UserName) as User by Hostname "Connection Type" Manufacturer "Product Name" Description "Device ID"
+```
+## Get A Quick Count of Endpoints by CID
+
+```
+| inputlookup aid_master
+| stats dc(aid) as endpointCount by cid
+| lookup cid_name cid OUTPUT name 
+| sort - endpointCount
+```
+
+## Hunting for Falcon Sensor Removal
+
+```
+Hunting for Falcon Sensor Removal
+event_platform=win event_simpleName=ProcessRollup2 ParentBaseFileName=cmd.exe FileName=msiexec.exe 
+| regex CommandLine=".+\\\Package\s+Cache\\\{[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}[}]v\d+\.\d+\.\d+\.\d+\\\(CsAgent.*|CsDeviceControl|CsFirmwareAnalysis)\.msi\"\s+REMOVE\=ALL"
+| lookup local=true aid_master aid OUTPUT AgentVersion, Version
+| eval ProcExplorer=case(TargetProcessId_decimal!="","https://falcon.crowdstrike.com/investigate/process-explorer/" .aid. "/" . TargetProcessId_decimal)
+| table ProcessStartTime_decimal aid LocalAddressIP4 ComputerName aip Version AgentVersion UserName ParentBaseFileName FileName CommandLine ProcExplorer
+| convert ctime(ProcessStartTime_decimal)
+| rename ProcessStartTime_decimal as systemClockUTC, aid as agentID, LocalAddressIP4 as localIP, aip as externalIP, Version as osVersion, AgentVersion as agentVersion, UserName as userName, ParentBaseFileName as parentFile, FileName as fileName, CommandLine as cmdLine, ProcExplorer as processExplorerLink
+```
+
+## MAC Devices
+
+```
+event_platform=mac sourcetype=HostInfo* event_simpleName=HostInfo 
+| where isnotnull(AnalyticsAndImprovementsIsSet_decimal)
+| stats latest(AnalyticsAndImprovementsIsSet_decimal) as AnalyticsAndImprovementsIsSet, latest(ApplicationFirewallIsSet_decimal) as ApplicationFirewallIsSet, latest(AutoUpdate_decimal) as AutoUpdate, latest(FullDiskAccessForFalconIsSet_decimal) as FullDiskAccessForFalconIsSet, latest(FullDiskAccessForOthersIsSet_decimal) as FullDiskAccessForOthersIsSet, latest(GatekeeperIsSet_decimal) as GatekeeperIsSet, latest(InternetSharingIsSet_decimal) as InternetSharingIsSet, latest(PasswordRequiredIsSet_decimal) as PasswordRequiredIsSet, latest(RemoteLoginIsSet_decimal) as RemoteLoginIsSet, latest(SIPIsEnabled_decimal) as SIPIsEnabled, latest(StealthModeIsSet_decimal) as StealthModeIsSet by aid
+|  eval remediationAnalytic=case(AnalyticsAndImprovementsIsSet=1, "Disable Analytics and Improvements in macOS")
+|  eval remediationFirewall=case(ApplicationFirewallIsSet=0, "Enable Application Firewall")
+|  eval remediationUpdate=case(AutoUpdate!=31, "Check macOS Update Settings")
+|  eval remediationFalcon=case(FullDiskAccessForFalconIsSet=0, "Enable Full Disk Access for Falcon")
+|  eval remediationGatekeeper=case(GatekeeperIsSet=0, "Enable macOS Gatekeeper")
+|  eval remediationInternet=case(InternetSharingIsSet=1, "Disable Internet Sharing")
+|  eval remediationPassword=case(PasswordRequiredIsSet=0, "Disable Automatic Logon")
+|  eval remediationSSH=case(RemoteLoginIsSet=1, "Disable Remote Logon")
+|  eval remediationSIP=case(SIPIsEnabled=0, "System Integrity Protection is disabled")
+|  eval remediationStealth=case(StealthModeIsSet=0, "Enable Stealth Mode")
+|  eval macosRemediations=mvappend(remediationAnalytic, remediationFirewall, remediationUpdate, remediationFalcon, remediationGatekeeper, remediationInternet, remediationPassword, remediationSSH, remediationSIP, remediationStealth)
+| lookup local=true aid_master aid OUTPUT HostHiddenStatus, ComputerName, SystemManufacturer, SystemProductName, Version, Timezone, AgentVersion
+| search HostHiddenStatus=Visible
+| table aid, ComputerName, SystemManufacturer, SystemProductName, Version, Timezone, AgentVersion, macosRemediations 
+| sort +ComputerName
+| rename aid as "Falcon Agent ID", ComputerName as "Endpoint", SystemManufacturer as "System Maker", SystemProductName as "Product Name", Version as "OS", AgentVersion as "Falcon Version", macosRemediations as "Configuration Issues"
+```
+
+## Hunting UserLogon Events
+
+```
+event_simpleName=UserLogon
+| where isnotnull(PasswordLastSet_decimal)
+| where LogonDomain=ComputerName
+| stats dc(UserSid_readable) as distinctSID values(UserSid_readable) as userSIDs dc(UserName) as distinctUserNames values(UserName) as userNames count(aid) as totalLogins dc(aid) as distinctEndpoints by PasswordLastSet_decimal, event_platform
+| sort - distinctEndpoints
+| convert ctime(PasswordLastSet_decimal) 
+| where distinctEndpoints > 1
+```
+
+### Hunting Linux
+## The same remote IP address having more than one failed login attempt
+
+```
+event_platform=Lin event_simpleName IN (UserLogon, UserLogonFailed2) LogonType_decimal=10
+| search NOT RemoteAddressIP4 IN (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.1)
+| iplocation RemoteAddressIP4
+| stats count(aid) as loginAttempts, dc(aid) as totalSystemsTargeted, values(ComputerName) as computersTargeted by UserName, RemoteAddressIP4, Country, Region, City
+| sort - loginAttempts
+```
+
+## The same remote IP address having more than one failed login attempt against the same username
+
+```
+event_platform=Lin event_simpleName IN (UserLogon, UserLogonFailed2) LogonType_decimal=10
+| search NOT RemoteAddressIP4 IN (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.1)
+| iplocation RemoteAddressIP4
+| stats count(aid) as loginAttempts, dc(aid) as totalSystemsTargeted, values(ComputerName) as computersTargeted by UserName, RemoteAddressIP4, Country, Region, City
+| sort - loginAttempts
+```
+
+## The same username against a single or multiple systems the point of interest
+
+```
+event_platform=Lin event_simpleName IN (UserLogon, UserLogonFailed2) LogonType_decimal=10
+| search NOT RemoteAddressIP4 IN (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.1)
+| iplocation RemoteAddressIP4
+| stats count(aid) as loginAttempts, dc(aid) as totalSystemsTargeted, dc(RemoteAddressIP4) as remoteIPsInvolved, values(Country) as countriesInvolved, values(ComputerName) as computersTargeted by UserName
+| sort - loginAttempts
+```
+
+## Successful Audit Login
+
+```
+event_platform=Lin event_simpleName IN (UserLogon) 
+| iplocation RemoteAddressIP4
+| convert ctime(LogonTime_decimal) as LogonTime, ctime(PasswordLastSet_decimal) as PasswordLastSet
+| eval LogonType=case(LogonType_decimal=2, "Interactive", LogonType_decimal=10, "Remote Interactive/SSH")
+| eval UserIsAdmin=case(UserIsAdmin_decimal=1, "Admin", UserIsAdmin_decimal=0, "Non-Admin")
+| fillnull value="-" RemoteAddressIP4, Country, Region, City
+| table aid, ComputerName, UserName, UID_decimal, PasswordLastSet, UserIsAdmin, LogonType, LogonTime, RemoteAddressIP4, Country, Region, City 
+| sort 0 +ComputerName, LogonTime
+| rename aid as "Agent ID", ComputerName as "Endpoint", UserName as "User", UID_decimal as "User ID", PasswordLastSet as "Password Last Set", UserIsAdmin as "Admin?", LogonType as "Logon Type", LogonTime as "Logon Time", RemoteAddressIP4 as "Remote IP", Country as "GeoIP Country", City as "GeoIP City", Region as "GeoIP Region"
+```
+
+## Hunting Linux RFM
+
+```
+earliest=-26h event_platform=Lin event_simpleName IN (ConfigStateUpdate, SensorHeartbeat, OsVersionInfo)
+| stats latest(ConfigStateData) as ConfigStateData, latest(SensorStateBitMap_decimal) as SensorStateBitMap_decimal, latest(OSVersionString) as OSVersionString by cid, aid
+| rex field=OSVersionString "Linux\\s\\S+\\s(?<kernelVersion>\\S+)?\\s.*"
+| eval ConfigStateData=split(ConfigStateData, ",")
+| eval userModeEnabled=if(match(ConfigStateData,"1400000000c4"),"Yes","No")
+| eval rfmFlag=if(match(SensorStateBitMap_decimal,"2"),"Yes","No")
+| eval sensorState=case(
+userModeEnabled == "Yes" AND rfmFlag == "Yes", "User Mode Enabled",
+userModeEnabled == "No" AND rfmFlag == "No",  "Kernel Mode Enabled",
+userModeEnabled == "No" AND rfmFlag == "Yes", "RFM",
+true(),"-")
+| lookup local=true aid_master.csv aid OUTPUT ComputerName, AgentVersion as falconVersion, Version as osVersion, FirstSeen, Time as LastSeen
+| fillnull kernelVersion value="-"
+| table aid, ComputerName, falconVersion, osVersion, kernelVersion, sensorState, osVersion, FirstSeen, LastSeen
+| convert ctime(FirstSeen) ctime(LastSeen)
+| sort + ComputerName
+```
