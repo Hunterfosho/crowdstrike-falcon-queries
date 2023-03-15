@@ -29,7 +29,7 @@
   - [Hunting for Falcon Sensor Removal](#hunting-for-falcon-sensor-removal)
   - [MAC Devices](#mac-devices)
   - [Hunting UserLogon Events](#hunting-userlogon-events)
-    - [Hunting Linux](#hunting-linux)
+- [Hunting Linux](#hunting-linux)
   - [The same remote IP address having more than one failed login attempt](#the-same-remote-ip-address-having-more-than-one-failed-login-attempt)
   - [The same remote IP address having more than one failed login attempt against the same username](#the-same-remote-ip-address-having-more-than-one-failed-login-attempt-against-the-same-username)
   - [The same username against a single or multiple systems the point of interest](#the-same-username-against-a-single-or-multiple-systems-the-point-of-interest)
@@ -324,7 +324,7 @@ event_simpleName=UserLogon
 | where distinctEndpoints > 1
 ```
 
-### Hunting Linux
+# Hunting Linux
 ## The same remote IP address having more than one failed login attempt
 
 ```
